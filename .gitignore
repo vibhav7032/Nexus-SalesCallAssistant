@@ -5,6 +5,7 @@ __pycache__/
 
 # Virtual environments
 venv/
+vvenv/
 ENV/
 env/
 .venv/
@@ -22,6 +23,7 @@ KMS/logs/
 # Node modules (if using inside agent-starter-react)
 node_modules/
 agent-starter-react/node_modules/
+nexus-ai-callmate/node_modules/
 
 # Mac OS and system files
 .DS_Store
