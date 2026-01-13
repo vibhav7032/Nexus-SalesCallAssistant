@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { Zap, ArrowRight, Phone, Brain, TrendingUp, Shield } from "lucide-react";
+import { ArrowRight, Phone, Brain, TrendingUp, Shield } from "lucide-react";
 
 const Index = () => {
   const features = [
@@ -37,7 +37,12 @@ const Index = () => {
           <div className="text-center max-w-4xl mx-auto">
             <div className="flex justify-center mb-8">
               <div className="relative">
-                <Zap className="w-20 h-20 text-primary animate-pulse-glow" />
+                {/* ✅ CHANGED: Use custom logo instead of Zap icon */}
+                <img 
+                  src="/logo.png" 
+                  alt="Nexus Logo" 
+                  className="w-20 h-20 object-contain animate-pulse-glow"
+                />
                 <div className="absolute inset-0 bg-primary/30 blur-3xl rounded-full" />
               </div>
             </div>

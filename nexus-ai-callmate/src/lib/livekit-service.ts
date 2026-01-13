@@ -8,7 +8,8 @@ export interface TokenResponse {
 
 export const getLiveKitToken = async (
   roomName: string,
-  participantName: string
+  participantName: string,
+  userEmail?: string  // ✅ ADD: Optional user email parameter
 ): Promise<TokenResponse> => {
   const response = await fetch('http://localhost:8000/get-token', {
     method: 'POST',
@@ -18,6 +19,7 @@ export const getLiveKitToken = async (
     body: JSON.stringify({
       room_name: roomName,
       participant_name: participantName,
+      user_email: userEmail,  // ✅ ADD: Send user email to backend
     }),
   });
 

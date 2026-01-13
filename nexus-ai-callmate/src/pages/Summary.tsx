@@ -7,16 +7,18 @@ import { Badge } from "@/components/ui/badge";
 import Navbar from "@/components/Navbar";
 import { fetchSession, CallSession } from "@/lib/analysis-service";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/contexts/AuthContext";
 
 const Summary = () => {
   const { id } = useParams<{ id: string }>();
   const [session, setSession] = useState<CallSession | null>(null);
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
+  const { token } = useAuth();
 
   useEffect(() => {
     const loadSession = async () => {
-      if (!id) return;
+      if (!id || !token) return;
       
       try {
         const data = await fetchSession(id);
@@ -34,7 +36,7 @@ const Summary = () => {
     };
     
     loadSession();
-  }, [id, toast]);
+  }, [id, token, toast]);
 
   if (loading) {
     return (
@@ -189,7 +191,7 @@ const Summary = () => {
           {/* Customer Messages Summary */}
           <Card className="p-6 bg-card/40 backdrop-blur-md border-primary/20 animate-slide-in" style={{ animationDelay: "100ms" }}>
             <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
-              <ThumbsDown className="w-5 h-5 text-blue-400" />
+             {/* <ThumbsDown className="w-5 h-5 text-blue-400" />  */}
               Customer Said ({userMessages.length} messages)
             </h2>
 

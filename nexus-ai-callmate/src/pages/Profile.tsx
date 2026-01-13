@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { User, Mail, Building, Key, Save } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -6,15 +6,29 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import Navbar from "@/components/Navbar";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/contexts/AuthContext"; // ✅ ADD THIS
 
 const Profile = () => {
   const { toast } = useToast();
+  const { user } = useAuth(); // ✅ ADD THIS
+  
   const [formData, setFormData] = useState({
-    name: "John Doe",
-    email: "john.doe@example.com",
-    company: "Acme Corp",
+    name: "",
+    email: "",
+    company: "",
     apiKey: "sk-xxxxxxxxxxxxxxxxxxxxxxxx",
   });
+
+  // ✅ LOAD USER DATA WHEN COMPONENT MOUNTS
+  useEffect(() => {
+    if (user) {
+      setFormData(prev => ({
+        ...prev,
+        name: user.name || "",
+        email: user.email || "",
+      }));
+    }
+  }, [user]);
 
   const handleSave = () => {
     toast({
@@ -49,7 +63,7 @@ const Profile = () => {
               <div>
                 <Label htmlFor="name" className="flex items-center gap-2 mb-2">
                   <User className="w-4 h-4" />
-                  Full Name
+                  User Name
                 </Label>
                 <Input
                   id="name"
@@ -70,6 +84,7 @@ const Profile = () => {
                   value={formData.email}
                   onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                   className="bg-input/50 border-border focus:border-primary/50"
+                  disabled // ✅ EMAIL SHOULD NOT BE EDITABLE
                 />
               </div>
               
@@ -83,6 +98,7 @@ const Profile = () => {
                   value={formData.company}
                   onChange={(e) => setFormData({ ...formData, company: e.target.value })}
                   className="bg-input/50 border-border focus:border-primary/50"
+                  placeholder="Enter your company name (optional)"
                 />
               </div>
             </div>

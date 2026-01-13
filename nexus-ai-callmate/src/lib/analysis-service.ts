@@ -1,4 +1,6 @@
 // src/lib/analysis-service.ts
+import { fetchWithAuth, API_URL } from './api';
+
 export type Sentiment = "positive" | "neutral" | "negative";
 
 export interface Analysis {
@@ -26,13 +28,14 @@ export interface MessagesResponse {
   messages: Message[];
 }
 
-// NEW: Session/Call History interfaces
+// Session/Call History interfaces
 export interface CallSession {
   session_id: string;
   timestamp: string;
   total_messages: number;
   latest_analysis: Analysis | null;
   messages: Message[];
+  user_email?: string;
 }
 
 export interface ConversationsResponse {
@@ -42,19 +45,14 @@ export interface ConversationsResponse {
   }>;
 }
 
-const API_BASE = "http://localhost:8000";
-
 /**
  * Fetch the latest sentiment analysis for a room
  */
 export async function fetchLatestAnalysis(
   roomId: string
 ): Promise<AnalysisResponse> {
-  const res = await fetch(`${API_BASE}/analysis/${roomId}`);
-  if (!res.ok) {
-    throw new Error(`Failed to fetch analysis: ${res.statusText}`);
-  }
-  return (await res.json()) as AnalysisResponse;
+  const response = await fetchWithAuth(`/analysis/${roomId}`);
+  return (await response.json()) as AnalysisResponse;
 }
 
 /**
@@ -64,31 +62,41 @@ export async function fetchMessages(
   roomId: string,
   limit = 50
 ): Promise<MessagesResponse> {
-  const res = await fetch(`${API_BASE}/messages/${roomId}?limit=${limit}`);
-  if (!res.ok) {
-    throw new Error(`Failed to fetch messages: ${res.statusText}`);
-  }
-  return (await res.json()) as MessagesResponse;
+  const response = await fetchWithAuth(`/messages/${roomId}?limit=${limit}`);
+  return (await response.json()) as MessagesResponse;
 }
 
 /**
- * NEW: Fetch all conversations (call history)
+ * Fetch all conversations (call history) for logged-in user
  */
 export async function fetchConversations(): Promise<ConversationsResponse> {
-  const res = await fetch(`${API_BASE}/conversations`);
-  if (!res.ok) {
-    throw new Error(`Failed to fetch conversations: ${res.statusText}`);
-  }
-  return (await res.json()) as ConversationsResponse;
+  const response = await fetchWithAuth('/conversations');
+  return (await response.json()) as ConversationsResponse;
 }
 
 /**
- * NEW: Fetch a specific saved session by ID
+ * Fetch a specific saved session by ID (with authentication)
  */
 export async function fetchSession(sessionId: string): Promise<CallSession> {
-  const res = await fetch(`${API_BASE}/session/${sessionId}`);
-  if (!res.ok) {
-    throw new Error(`Failed to fetch session: ${res.statusText}`);
-  }
-  return (await res.json()) as CallSession;
+  const response = await fetchWithAuth(`/session/${sessionId}`);
+  return (await response.json()) as CallSession;
+}
+
+/**
+ * ✅ NEW: Alias for fetchSession (for Dashboard compatibility)
+ */
+export async function fetchSessionDetails(sessionId: string): Promise<CallSession> {
+  return fetchSession(sessionId);
+}
+
+/**
+ * Save a session with user email (with authentication)
+ */
+export async function saveSession(roomId: string) {
+  const user = JSON.parse(localStorage.getItem('nexus_user') || '{}');
+  const response = await fetchWithAuth(
+    `/save-session?room_id=${roomId}&user_email=${user.email}`,
+    { method: 'POST' }
+  );
+  return await response.json();
 }

@@ -1,22 +1,63 @@
 import { useEffect, useState } from "react";
-import { Phone, TrendingUp, Users, Star, Activity } from "lucide-react";
+import { Phone, TrendingUp, Users, Star, Activity, MessageSquare } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import Navbar from "@/components/Navbar";
 import { Link } from "react-router-dom";
-import { fetchConversations, ConversationsResponse } from "@/lib/analysis-service";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/contexts/AuthContext";
+import { fetchConversations, fetchSessionDetails } from "@/lib/analysis-service";
+
+interface Session {
+  room_id: string;
+  count: number;
+}
+
+interface ConversationsResponse {
+  sessions: Session[];
+}
+
+interface SessionAnalysis {
+  sentiment?: string;
+  confidence?: number;
+}
+
+interface Stats {
+  totalCalls: number;
+  successRate: string;
+  avgConfidence: string;
+  positiveCount: number;
+  avgCallLength: string;
+}
 
 const Dashboard = () => {
   const [conversations, setConversations] = useState<ConversationsResponse | null>(null);
+  const [stats, setStats] = useState<Stats>({
+    totalCalls: 0,
+    successRate: "0%",
+    avgConfidence: "0.0",
+    positiveCount: 0,
+    avgCallLength: "0",
+  });
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
+  const { token } = useAuth();
 
   useEffect(() => {
     const loadConversations = async () => {
+      if (!token) {
+        setLoading(false);
+        return;
+      }
+
       try {
         const data = await fetchConversations();
         setConversations(data);
+
+        // ✅ Calculate real stats from session data
+        if (data.sessions && data.sessions.length > 0) {
+          await calculateStats(data.sessions);
+        }
       } catch (error) {
         console.error("Failed to load conversations:", error);
         toast({
@@ -28,19 +69,102 @@ const Dashboard = () => {
         setLoading(false);
       }
     };
-    loadConversations();
-  }, []);
 
-  const stats = [
-    { 
-      label: "Total Calls", 
-      value: conversations?.sessions.length.toString() || "0", 
-      icon: Phone, 
-      trend: "+12%" 
+    loadConversations();
+  }, [token]);
+
+  // ✅ Calculate real statistics from session data
+  const calculateStats = async (sessions: Session[]) => {
+    try {
+      let positiveCount = 0;
+      let totalConfidence = 0;
+      let totalMessages = 0;
+      let analyzedCount = 0;
+
+      // Fetch analysis for each session (limit to recent 10 to avoid too many requests)
+      const recentSessions = sessions.slice(0, 10);
+      
+      for (const session of recentSessions) {
+        try {
+          const sessionData = await fetchSessionDetails(session.room_id);
+          
+          // ✅ Count total messages for avg call length
+          totalMessages += session.count;
+          
+          if (sessionData?.latest_analysis) {
+            const analysis = sessionData.latest_analysis as SessionAnalysis;
+            analyzedCount++;
+
+            // Count positive sentiments
+            if (analysis.sentiment === "positive") {
+              positiveCount++;
+            }
+
+            // Sum confidence scores
+            if (typeof analysis.confidence === "number") {
+              totalConfidence += analysis.confidence;
+            }
+          }
+        } catch (error) {
+          console.error(`Failed to fetch session ${session.room_id}:`, error);
+          // Continue with other sessions even if one fails
+        }
+      }
+
+      // Calculate success rate (percentage of positive sentiments)
+      const successRate = analyzedCount > 0 
+        ? Math.round((positiveCount / analyzedCount) * 100) 
+        : 0;
+
+      // Calculate average confidence as percentage
+const avgConfidence = analyzedCount > 0 
+  ? Math.round((totalConfidence / analyzedCount) * 100) 
+  : 0;
+
+      // ✅ Calculate average call length (messages per call)
+      const avgCallLength = recentSessions.length > 0
+        ? Math.round(totalMessages / recentSessions.length)
+        : 0;
+
+      setStats({
+  totalCalls: sessions.length,
+  successRate: `${successRate}%`,
+  avgConfidence: `${avgConfidence}%`,  // ✅ Add % here
+  positiveCount: positiveCount,
+  avgCallLength: avgCallLength.toString(),
+});
+
+    } catch (error) {
+      console.error("Error calculating stats:", error);
+      // Keep default stats if calculation fails
+    }
+  };
+
+  const displayStats = [
+    {
+      label: "Total Calls",
+      value: stats.totalCalls.toString(),
+      icon: Phone,
+      trend: conversations && conversations.sessions.length > 0 ? "+12%" : "—"
     },
-    { label: "Success Rate", value: "87%", icon: TrendingUp, trend: "+5%" },
-    { label: "Active Users", value: "32", icon: Users, trend: "+8%" },
-    { label: "Avg Rating", value: "4.2", icon: Star, trend: "+0.3" },
+    {
+      label: "Success Rate",
+      value: stats.successRate,
+      icon: TrendingUp,
+      trend: stats.positiveCount > 0 ? `${stats.positiveCount} positive` : "—"
+    },
+    {
+  label: "Avg Confidence",
+  value: stats.avgConfidence,  // Will show like "85%"
+  icon: Star,
+  trend: parseInt(stats.avgConfidence) > 70 ? "High" : parseInt(stats.avgConfidence) > 50 ? "Medium" : "Low"
+},
+    {
+      label: "Avg Call Length",
+      value: stats.avgCallLength,
+      icon: MessageSquare,
+      trend: `messages/call`
+    },
   ];
 
   return (
@@ -67,7 +191,7 @@ const Dashboard = () => {
 
         {/* Stats Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          {stats.map((stat, index) => (
+          {displayStats.map((stat, index) => (
             <Card
               key={stat.label}
               className="p-6 bg-card/40 backdrop-blur-md border-primary/20 hover:border-primary/40 transition-all duration-300 hover:shadow-glow animate-slide-in"
@@ -89,7 +213,7 @@ const Dashboard = () => {
         <Card className="p-6 bg-card/40 backdrop-blur-md border-primary/20">
           <h2 className="text-2xl font-bold mb-6 flex items-center gap-2">
             <Phone className="w-6 h-6 text-primary" />
-            Recent Calls
+            Your Recent Calls
           </h2>
 
           {loading ? (
