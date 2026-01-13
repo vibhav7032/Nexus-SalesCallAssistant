@@ -1,131 +1,165 @@
-# agent.py - FINAL SINGLE /end-call CALL VERSION
+from dotenv import load_dotenv
 import os
 import asyncio
 import logging
 import httpx
 import time
-from dotenv import load_dotenv
-from livekit import agents, rtc
+import json
+
+from livekit import agents
 from livekit.agents import AgentSession, Agent, RoomInputOptions, UserInputTranscribedEvent
-from livekit.plugins import deepgram, silero, google
+from livekit.plugins import deepgram, silero, openai  # ✅ CHANGED: openai instead of google
 
-load_dotenv()
+# Enable debug logging
+logging.basicConfig(level=logging.DEBUG)
 
-BACKEND_URL = os.getenv("BACKEND_URL", "http://127.0.0.1:8000")
-USER_ID_FALLBACK = os.getenv("USER_ID")
+# Load environment variables
+load_dotenv(".env")
 
-logging.basicConfig(level=logging.INFO)
-
+# Assistant agent
 class Assistant(Agent):
-    def __init__(self, userId):
-        super().__init__(instructions="You are a sales person. Convince customers to buy AI/ML courses.")
-        self.fastapi_url = BACKEND_URL
-        self.userId = userId
+    def __init__(self) -> None:
+        super().__init__(instructions="You are a sales person convice the customers please to sell an Educational courses on AI and Machine learning keep it in one setnece")
+        self.fastapi_url = "http://localhost:8000"
+        self.user_email = None  # Store user email
 
-    async def send_transcript(self, text, room_id, speaker="user"):
+    async def send_transcript_to_fastapi(self, text: str, room_id: str, speaker: str = "user"):
+        """Send transcript (user or assistant) to FastAPI backend for processing"""
         try:
-            async with httpx.AsyncClient(timeout=20) as client:
-                await client.post(
+            payload = {
+                "text": text,
+                "speaker": speaker,
+                "timestamp": time.time(),
+                "room_id": room_id,
+                "user_email": self.user_email  # ✅ Include user email
+            }
+            print(f"Sending to FastAPI: {payload}")
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                response = await client.post(
                     f"{self.fastapi_url}/process-transcription",
-                    json={
-                        "text": text,
-                        "speaker": speaker,
-                        "timestamp": time.time(),
-                        "room_id": room_id,
-                    }
+                    json=payload
                 )
+                if response.status_code == 200:
+                    result = response.json()
+                    print(f"FastAPI response: {result}")
+                else:
+                    print(f"FastAPI error: {response.status_code} - {response.text}")
         except Exception as e:
-            print("Transcript error:", e)
+            print(f"Error sending to FastAPI: {e}")
 
-    async def finalize(self, room_id):
-        """Save session + generate summary ONCE only"""
+    async def save_session(self, room_id: str):
+        """Call FastAPI to save session when room disconnects"""
         try:
-            async with httpx.AsyncClient(timeout=20) as client:
-                await client.post(
+            # ✅ Include user_email if available
+            params = {"room_id": room_id}
+            if self.user_email:
+                params["user_email"] = self.user_email
+                print(f"💾 Saving session for user: {self.user_email}")
+            else:
+                print("⚠️ WARNING: No user_email available, session won't be user-specific!")
+            
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                response = await client.post(
                     f"{self.fastapi_url}/save-session",
-                    params={"room_id": room_id}
+                    params=params
                 )
+                result = response.json()
+                print(f"✅ Save session response: {result}")
         except Exception as e:
-            print("Save session error:", e)
+            print(f"❌ Error saving session: {e}")
 
-        await asyncio.sleep(2)
-
-        try:
-            async with httpx.AsyncClient(timeout=30) as client:
-                await client.post(
-                    f"{self.fastapi_url}/end-call",
-                    params={
-                        "room_id": room_id,
-                        "phone_number": "9999999999",
-                        "userId": self.userId,
-                    }
-                )
-        except Exception as e:
-            print("End-call error:", e)
-
-
+# Async entrypoint
 async def entrypoint(ctx: agents.JobContext):
-    room = ctx.room
-    room_name = room.name or ""
+    assistant = Assistant()
 
-    # Extract userId from room name
-    userId = None
-    if "-user-" in room_name:
-        userId = room_name.split("-user-")[-1]
+    # ✅ Extract user email from room metadata
+    if hasattr(ctx.room, 'metadata') and ctx.room.metadata:
+        try:
+            metadata = json.loads(ctx.room.metadata)
+            assistant.user_email = metadata.get('user_email')
+            if assistant.user_email:
+                print(f"✅ User email from room metadata: {assistant.user_email}")
+            else:
+                print("⚠️ No user_email in room metadata")
+        except Exception as e:
+            print(f"⚠️ Failed to parse room metadata: {e}")
+    else:
+        print("⚠️ No room metadata available")
 
-    userId = userId or USER_ID_FALLBACK or "anonymous-user"
-
-    assistant = Assistant(userId)
-
-    finalized = False
-
-    async def try_finalize():
-        nonlocal finalized
-        if finalized:
-            return
-        finalized = True
-        print("🔥 FINALIZE CALLED ONCE ONLY")
-        await assistant.finalize(room_name)
-
-    @room.on("participant_disconnected")
-    def on_disconnect(participant: rtc.RemoteParticipant):
-        if participant.identity != "agent":
-            asyncio.create_task(try_finalize())
-
+    # ✅ CHANGED: Prepare session with Groq via OpenAI plugin
     session = AgentSession(
         stt=deepgram.STT(
             model="nova-3",
             language="multi",
-            api_key=os.getenv("DEEPGRAM_API_KEY"),
+            api_key=os.getenv("DEEPGRAM_API_KEY")
         ),
         tts=deepgram.TTS(
             model="aura-asteria-en",
-            api_key=os.getenv("DEEPGRAM_API_KEY"),
+            api_key=os.getenv("DEEPGRAM_API_KEY")
         ),
-        llm=google.LLM(
-            model="gemini-2.0-flash",
-            api_key=os.getenv("GOOGLE_API_KEY"),
+        llm=openai.LLM(
+            model="llama-3.3-70b-versatile",  # ✅ CHANGED: Groq model
+            api_key=os.getenv("GROQ_API_KEY"),  # ✅ CHANGED: Use GROQ_API_KEY
+            base_url="https://api.groq.com/openai/v1",  # ✅ CHANGED: Groq's OpenAI-compatible endpoint
         ),
         vad=silero.VAD.load(),
-        turn_detection=None,
+        turn_detection=None
     )
 
+    room_name = ctx.room.name
+
+    # Register shutdown callback
+    async def _on_shutdown():
+        try:
+            await asyncio.wait_for(assistant.save_session(room_name), timeout=12.0)
+        except Exception as e:
+            print(f"❌ Shutdown save_session failed: {e}")
+
+    ctx.add_shutdown_callback(_on_shutdown)
+
+    @session.on("session_disconnected")
+    def on_session_disconnected(event):
+        print(f"Session disconnected for room={room_name}, scheduling save...")
+
+    # Handle user speech (final transcript)
     @session.on("user_input_transcribed")
-    def on_user_text(event: UserInputTranscribedEvent):
+    def on_user_input_transcribed(event: UserInputTranscribedEvent):
         if event.is_final:
-            asyncio.create_task(assistant.send_transcript(event.transcript, room_name, "user"))
+            print(f"Final user transcript: {event.transcript}")
+            asyncio.create_task(
+                assistant.send_transcript_to_fastapi(event.transcript, room_name, speaker="user")
+            )
+        else:
+            print(f"Interim transcript: {event.transcript}")
 
+    # Handle agent (assistant) messages
     @session.on("conversation_item_added")
-    def on_ai(item):
-        if getattr(item.item, "role", "") == "assistant":
-            asyncio.create_task(assistant.send_transcript(item.item.text_content, room_name, "assistant"))
+    def on_conversation_item_added(event):
+        if hasattr(event.item, "role") and event.item.role == "assistant":
+            print(f"Agent message: {event.item.text_content}")
+            asyncio.create_task(
+                assistant.send_transcript_to_fastapi(event.item.text_content, room_name, speaker="assistant")
+            )
 
-    await session.start(room=room, agent=assistant, room_input_options=RoomInputOptions(close_on_disconnect=True))
+    # Start session and connect
+    await session.start(
+        room=ctx.room,
+        agent=assistant,
+        room_input_options=RoomInputOptions(
+            noise_cancellation=None,
+            close_on_disconnect=False
+        ),
+    )
+
     await ctx.connect()
 
+    # Initial greeting
+    await session.generate_reply(
+        instructions="Hello! I am listening. How can I assist you today?"
+    )
 
+# Main entrypoint
 if __name__ == "__main__":
-    logging.info("Starting agent worker…")
     agents.cli.run_app(
         agents.WorkerOptions(
             entrypoint_fnc=entrypoint,
