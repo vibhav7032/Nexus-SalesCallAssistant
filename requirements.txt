@@ -1,34 +1,47 @@
-# --- Core Backend Framework ---
-fastapi
-uvicorn[standard]
-
-# --- Environment Variables ---
-python-dotenv
-
-# --- MongoDB ---
-pymongo
-
-# --- Google Gemini + AI ---
-google-genai
-
-# --- LiveKit (Token generation + Agents) ---
-livekit
 livekit-agents
 livekit-plugins-openai
 livekit-plugins-silero
 livekit-plugins-google
 livekit-plugins-deepgram
-livekit-plugins-noise-cancellation
 
-# --- Memory & Search Tools (ONLY IF YOU ACTUALLY USE THEM) ---
+livekit-plugins-noise-cancellation
 mem0ai
 duckduckgo-search
-
-# --- Utilities ---
+langchain_community
 requests
+python-dotenv
+
+# Backend framework
+fastapi
+uvicorn
+
+# MongoDB client
+pymongo
+
+# Environment variable loader
+python-dotenv
+
+# AI/LLM
+groq  
+
+# Async utilities
 asyncio
 
+# LangChain & search tools
+langchain_community
+duckduckgo-search
+
+# Mem0 AI memory library
+mem0ai
+
+# CORS middleware
+fastapi[all]
+
 # --- Authentication / Password Hashing ---
-bcrypt
 python-jose[cryptography]
-email-validator
+passlib[bcrypt]
+bcrypt==4.0.1
+cryptography
+
+# Additional dependencies for passlib and jose
+pyasn1
